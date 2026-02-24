@@ -7,6 +7,7 @@ import {
     type InnerGridColumn,
     type Rectangle,
     type BaseGridCell,
+    type GridColumnGroup,
 } from "../data-grid-types.js";
 import { direction } from "../../../common/utils.js";
 import React from "react";
@@ -70,6 +71,24 @@ export function gridSelectionHasItem(sel: GridSelection, item: Item): boolean {
 
 export function isGroupEqual(left: string | undefined, right: string | undefined): boolean {
     return (left ?? "") === (right ?? "");
+}
+
+export function getGroupDepth(columns: readonly { group?: GridColumnGroup }[]): number {
+    let maxDepth = 0;
+    for (const c of columns) {
+        const g = c.group;
+        const depth = g === undefined ? 0 : typeof g === "string" ? 1 : g.length;
+        if (depth > maxDepth) maxDepth = depth;
+    }
+    return maxDepth;
+}
+
+export function getColumnGroupName(group: GridColumnGroup | undefined, levelFromBottom: number = 0): string | undefined {
+    if (group === undefined) return undefined;
+    if (typeof group === "string") return levelFromBottom === 0 ? group : undefined;
+    const index = group.length - 1 - levelFromBottom;
+    if (index < 0 || index >= group.length) return undefined;
+    return group[index];
 }
 
 export function cellIsSelected(location: Item, cell: InnerGridCell, selection: GridSelection): boolean {
@@ -267,14 +286,23 @@ export function getRowIndexForY(
     hasGroups: boolean,
     headerHeight: number,
     groupHeaderHeight: number,
+    groupHeaderDepth: number,
     rows: number,
     rowHeight: number | ((index: number) => number),
     cellYOffset: number,
     translateY: number,
     freezeTrailingRows: number
 ): number | undefined {
-    const totalHeaderHeight = headerHeight + groupHeaderHeight;
-    if (hasGroups && targetY <= groupHeaderHeight) return -2;
+    const totalGroupHeaderHeight = hasGroups ? groupHeaderHeight * groupHeaderDepth : 0;
+    const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
+    if (hasGroups && targetY <= totalGroupHeaderHeight) {
+        if (groupHeaderDepth <= 1 || groupHeaderHeight <= 0) return -2;
+        const levelFromTop = Math.max(
+            0,
+            Math.min(groupHeaderDepth - 1, Math.floor(targetY / Math.max(1, groupHeaderHeight)))
+        );
+        return -(groupHeaderDepth + 1 - levelFromTop);
+    }
     if (targetY <= totalHeaderHeight) return -1;
 
     let y = height;
@@ -762,6 +790,7 @@ export function computeBounds(
     width: number,
     height: number,
     groupHeaderHeight: number,
+    groupHeaderDepth: number,
     totalHeaderHeight: number,
     cellXOffset: number,
     cellYOffset: number,
@@ -780,11 +809,13 @@ export function computeBounds(
         height: 0,
     };
 
-    if (col >= mappedColumns.length || row >= rows || row < -2 || col < 0) {
+    const minHeaderRow = -1 - groupHeaderDepth;
+    if (col >= mappedColumns.length || row >= rows || row < minHeaderRow || col < 0) {
         return result;
     }
 
-    const headerHeight = totalHeaderHeight - groupHeaderHeight;
+    const totalGroupHeaderHeight = groupHeaderHeight * groupHeaderDepth;
+    const headerHeight = totalHeaderHeight - totalGroupHeaderHeight;
 
     if (col >= freezeColumns) {
         const dir = cellXOffset > col ? -1 : 1;
@@ -801,18 +832,22 @@ export function computeBounds(
     result.width = mappedColumns[col].width + 1;
 
     if (row === -1) {
-        result.y = groupHeaderHeight;
+        result.y = totalGroupHeaderHeight;
         result.height = headerHeight;
-    } else if (row === -2) {
-        result.y = 0;
+    } else if (row <= -2) {
+        const levelFromBottom = -2 - row;
+        if (levelFromBottom < 0 || levelFromBottom >= groupHeaderDepth) {
+            return result;
+        }
+        result.y = totalGroupHeaderHeight - groupHeaderHeight * (levelFromBottom + 1);
         result.height = groupHeaderHeight;
 
         let start = col;
-        const group = mappedColumns[col].group;
+        const group = getColumnGroupName(mappedColumns[col].group, levelFromBottom);
         const sticky = mappedColumns[col].sticky;
         while (
             start > 0 &&
-            isGroupEqual(mappedColumns[start - 1].group, group) &&
+            isGroupEqual(getColumnGroupName(mappedColumns[start - 1].group, levelFromBottom), group) &&
             mappedColumns[start - 1].sticky === sticky
         ) {
             const c = mappedColumns[start - 1];
@@ -824,7 +859,7 @@ export function computeBounds(
         let end = col;
         while (
             end + 1 < mappedColumns.length &&
-            isGroupEqual(mappedColumns[end + 1].group, group) &&
+            isGroupEqual(getColumnGroupName(mappedColumns[end + 1].group, levelFromBottom), group) &&
             mappedColumns[end + 1].sticky === sticky
         ) {
             const c = mappedColumns[end + 1];

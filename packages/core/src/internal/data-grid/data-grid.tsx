@@ -2,8 +2,10 @@ import * as React from "react";
 import type { FullTheme } from "../../common/styles.js";
 import {
     computeBounds,
+    getColumnGroupName,
     getColumnIndexForX,
     getEffectiveColumns,
+    getGroupDepth,
     getRowIndexForY,
     getStickyWidth,
     rectBottomRight,
@@ -431,8 +433,6 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             }),
         [headerIcons]
     );
-    const totalHeaderHeight = enableGroups ? groupHeaderHeight + headerHeight : headerHeight;
-
     const scrollingStopRef = React.useRef(-1);
     const enableFirefoxRescaling = (experimental?.enableFirefoxRescaling ?? false) && browserIsFirefox.value;
     const enableSafariRescaling = (experimental?.enableSafariRescaling ?? false) && browserIsSafari.value;
@@ -450,12 +450,18 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
     }, [cellYOffset, cellXOffset, translateX, translateY, enableFirefoxRescaling, enableSafariRescaling]);
 
     const mappedColumns = useMappedColumns(columns, freezeColumns);
+    const groupHeaderDepth = React.useMemo(
+        () => (enableGroups ? Math.max(1, getGroupDepth(columns)) : 0),
+        [columns, enableGroups]
+    );
+    const totalGroupHeaderHeight = enableGroups ? groupHeaderHeight * groupHeaderDepth : 0;
+    const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
     const stickyX = React.useMemo(
         () => (fixedShadowX ? getStickyWidth(mappedColumns, dragAndDropState) : 0),
         [mappedColumns, dragAndDropState, fixedShadowX]
     );
 
-    // row: -1 === columnHeader, -2 === groupHeader
+    // row: -1 === columnHeader, -2 and lower === nested group headers
     const getBoundsForItem = React.useCallback(
         (canvas: HTMLCanvasElement, col: number, row: number): Rectangle | undefined => {
             const rect = canvas.getBoundingClientRect();
@@ -472,6 +478,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 width,
                 height,
                 groupHeaderHeight,
+                groupHeaderDepth,
                 totalHeaderHeight,
                 cellXOffset,
                 cellYOffset,
@@ -499,11 +506,12 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         [
             width,
             height,
-            groupHeaderHeight,
-            totalHeaderHeight,
-            cellXOffset,
-            cellYOffset,
-            translateX,
+                groupHeaderHeight,
+                groupHeaderDepth,
+                totalHeaderHeight,
+                cellXOffset,
+                cellYOffset,
+                translateX,
             translateY,
             rows,
             freezeColumns,
@@ -555,6 +563,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 enableGroups,
                 headerHeight,
                 groupHeaderHeight,
+                groupHeaderDepth,
                 rows,
                 rowHeight,
                 cellYOffset,
@@ -614,6 +623,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 let bounds = getBoundsForItem(canvas, col, row);
                 assert(bounds !== undefined);
                 let isEdge = bounds !== undefined && bounds.x + bounds.width - posX <= edgeDetectionBuffer;
+                const groupLevel = row <= -2 ? -2 - row : 0;
 
                 const previousCol = col - 1;
                 if (posX - bounds.x <= edgeDetectionBuffer && previousCol >= 0) {
@@ -621,10 +631,10 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     bounds = getBoundsForItem(canvas, previousCol, row);
                     assert(bounds !== undefined);
                     result = {
-                        kind: enableGroups && row === -2 ? groupHeaderKind : headerKind,
+                        kind: enableGroups && row <= -2 ? groupHeaderKind : headerKind,
                         location: [previousCol, row] as any,
                         bounds: bounds,
-                        group: mappedColumns[previousCol].group ?? "",
+                        group: getColumnGroupName(mappedColumns[previousCol].group, groupLevel) ?? "",
                         isEdge,
                         shiftKey,
                         ctrlKey,
@@ -638,8 +648,8 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                     };
                 } else {
                     result = {
-                        kind: enableGroups && row === -2 ? groupHeaderKind : headerKind,
-                        group: mappedColumns[col].group ?? "",
+                        kind: enableGroups && row <= -2 ? groupHeaderKind : headerKind,
+                        group: getColumnGroupName(mappedColumns[col].group, groupLevel) ?? "",
                         location: [col, row] as any,
                         bounds: bounds,
                         isEdge,
@@ -714,6 +724,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             enableGroups,
             headerHeight,
             groupHeaderHeight,
+            groupHeaderDepth,
             rows,
             rowHeight,
             cellYOffset,
@@ -811,6 +822,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             theme,
             headerHeight,
             groupHeaderHeight,
+            groupHeaderDepth,
             disabledRows: disabledRows ?? CompactSelection.empty(),
             rowHeight,
             verticalBorder,
@@ -883,6 +895,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         theme,
         headerHeight,
         groupHeaderHeight,
+        groupHeaderDepth,
         disabledRows,
         rowHeight,
         verticalBorder,
@@ -958,7 +971,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
         hCol >= 0 &&
         hCol < mappedColumns.length &&
         mappedColumns[hCol].headerRowMarkerDisabled !== true;
-    const groupHeaderHovered = hCol !== undefined && hRow === -2;
+    const groupHeaderHovered = hCol !== undefined && hRow !== undefined && hRow <= -2;
     let clickableInnerCellHovered = false;
     let editableBoolHovered = false;
     let cursorOverride: React.CSSProperties["cursor"] | undefined = drawCursorOverride;
@@ -1008,7 +1021,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             if (groupDesc.actions !== undefined) {
                 const boxes = getActionBoundsForGroup(bounds, groupDesc.actions);
                 for (const [i, box] of boxes.entries()) {
-                    if (pointInRect(box, localEventX + bounds.x, localEventY + box.y)) {
+                    if (pointInRect(box, localEventX + bounds.x, localEventY + bounds.y)) {
                         return groupDesc.actions[i];
                     }
                 }

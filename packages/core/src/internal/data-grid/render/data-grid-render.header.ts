@@ -9,6 +9,7 @@ import { GridColumnMenuIcon, type DrawHeaderCallback, type GridSelection, type R
 import {
     drawMenuDots,
     getMeasuredTextCache,
+    getColumnGroupName,
     getMiddleCenterBias,
     measureTextCached,
     roundedPoly,
@@ -23,6 +24,7 @@ export function drawGridHeaders(
     ctx: CanvasRenderingContext2D,
     effectiveCols: readonly MappedGridColumn[],
     enableGroups: boolean,
+    groupHeaderDepth: number,
     hovered: HoverInfo | undefined,
     width: number,
     translateX: number,
@@ -40,7 +42,8 @@ export function drawGridHeaders(
     drawHeaderCallback: DrawHeaderCallback | undefined,
     touchMode: boolean
 ) {
-    const totalHeaderHeight = headerHeight + groupHeaderHeight;
+    const totalGroupHeaderHeight = groupHeaderHeight * groupHeaderDepth;
+    const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
     if (totalHeaderHeight <= 0) return;
 
     ctx.fillStyle = outerTheme.bgHeader;
@@ -59,10 +62,10 @@ export function drawGridHeaders(
         const diff = Math.max(0, clipX - x);
         ctx.save();
         ctx.beginPath();
-        ctx.rect(x + diff, groupHeaderHeight, c.width - diff, headerHeight);
+        ctx.rect(x + diff, totalGroupHeaderHeight, c.width - diff, headerHeight);
         ctx.clip();
 
-        const groupTheme = getGroupDetails(c.group ?? "").overrideTheme;
+        const groupTheme = getGroupDetails(getColumnGroupName(c.group, 0) ?? "").overrideTheme;
         const theme =
             c.themeOverride === undefined && groupTheme === undefined
                 ? outerTheme
@@ -87,7 +90,7 @@ export function drawGridHeaders(
 
         const bgFillStyle = selected ? theme.accentColor : hasSelectedCell ? theme.bgHeaderHasFocus : theme.bgHeader;
 
-        const y = enableGroups ? groupHeaderHeight : 0;
+        const y = enableGroups ? totalGroupHeaderHeight : 0;
         const xOffset = c.sourceIndex === 0 ? 0 : 1;
 
         if (selected) {
@@ -136,6 +139,7 @@ export function drawGridHeaders(
             width,
             translateX,
             groupHeaderHeight,
+            groupHeaderDepth,
             hovered,
             outerTheme,
             spriteManager,
@@ -153,6 +157,7 @@ export function drawGroups(
     width: number,
     translateX: number,
     groupHeaderHeight: number,
+    groupHeaderDepth: number,
     hovered: HoverInfo | undefined,
     theme: FullTheme,
     spriteManager: SpriteManager,
@@ -163,14 +168,15 @@ export function drawGroups(
 ) {
     const xPad = 8;
     const [hCol, hRow] = hovered?.[0] ?? [];
+    const totalGroupHeaderHeight = groupHeaderHeight * groupHeaderDepth;
 
     let finalX = 0;
-    walkGroups(effectiveCols, width, translateX, groupHeaderHeight, (span, groupName, x, y, w, h) => {
+    walkGroups(effectiveCols, width, translateX, groupHeaderHeight, groupHeaderDepth, (span, groupName, x, y, w, h, row) => {
         if (
             damage !== undefined &&
             !damage.hasItemInRectangle({
                 x: span[0],
-                y: -2,
+                y: row,
                 width: span[1] - span[0] + 1,
                 height: 1,
             })
@@ -184,7 +190,7 @@ export function drawGroups(
         const group = getGroupDetails(groupName);
         const groupTheme =
             group?.overrideTheme === undefined ? theme : mergeAndRealizeTheme(theme, group.overrideTheme);
-        const isHovered = hRow === -2 && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
+        const isHovered = hRow === row && hCol !== undefined && hCol >= span[0] && hCol <= span[1];
         const fillColor = isHovered
             ? (groupTheme.bgGroupHeaderHovered ?? groupTheme.bgHeaderHovered)
             : (groupTheme.bgGroupHeader ?? groupTheme.bgHeader);
@@ -212,7 +218,7 @@ export function drawGroups(
             ctx.fillText(
                 group.name,
                 drawX + xPad,
-                groupHeaderHeight / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
+                y + groupHeaderHeight / 2 + getMiddleCenterBias(ctx, theme.headerFontFull)
             );
 
             if (group.actions !== undefined && isHovered) {
@@ -221,7 +227,7 @@ export function drawGroups(
                 ctx.beginPath();
                 const fadeStartX = actionBoxes[0].x - 10;
                 const fadeWidth = x + w - fadeStartX;
-                ctx.rect(fadeStartX, 0, fadeWidth, groupHeaderHeight);
+                ctx.rect(fadeStartX, y, fadeWidth, groupHeaderHeight);
                 const grad = ctx.createLinearGradient(fadeStartX, 0, fadeStartX + fadeWidth, 0);
                 const trans = withAlpha(fillColor, 0);
                 grad.addColorStop(0, trans);
@@ -238,7 +244,7 @@ export function drawGroups(
                 for (let i = 0; i < group.actions.length; i++) {
                     const action = group.actions[i];
                     const box = actionBoxes[i];
-                    const actionHovered = pointInRect(box, mouseX + x, mouseY);
+                    const actionHovered = pointInRect(box, mouseX + x, mouseY + y);
                     if (actionHovered) {
                         ctx.globalAlpha = 1;
                     }
@@ -262,8 +268,8 @@ export function drawGroups(
 
         if (x !== 0 && verticalBorder(span[0])) {
             ctx.beginPath();
-            ctx.moveTo(x + 0.5, 0);
-            ctx.lineTo(x + 0.5, groupHeaderHeight);
+            ctx.moveTo(x + 0.5, y);
+            ctx.lineTo(x + 0.5, y + groupHeaderHeight);
             ctx.strokeStyle = theme.borderColor;
             ctx.lineWidth = 1;
             ctx.stroke();
@@ -276,10 +282,13 @@ export function drawGroups(
 
     ctx.beginPath();
     ctx.moveTo(finalX + 0.5, 0);
-    ctx.lineTo(finalX + 0.5, groupHeaderHeight);
+    ctx.lineTo(finalX + 0.5, totalGroupHeaderHeight);
 
-    ctx.moveTo(0, groupHeaderHeight + 0.5);
-    ctx.lineTo(width, groupHeaderHeight + 0.5);
+    for (let i = 1; i <= groupHeaderDepth; i++) {
+        const y = i * groupHeaderHeight;
+        ctx.moveTo(0, y + 0.5);
+        ctx.lineTo(width, y + 0.5);
+    }
     ctx.strokeStyle = theme.borderColor;
     ctx.lineWidth = 1;
     ctx.stroke();

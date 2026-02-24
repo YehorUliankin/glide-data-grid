@@ -42,7 +42,7 @@ export const groupHeaderKind = "group-header" as const;
 /** @category Types */
 export interface GridMouseGroupHeaderEventArgs extends BaseGridMouseEventArgs, PositionableMouseEventArgs {
     readonly kind: typeof groupHeaderKind;
-    readonly location: readonly [number, -2];
+    readonly location: readonly [number, number];
     readonly bounds: Rectangle;
     readonly group: string;
 }

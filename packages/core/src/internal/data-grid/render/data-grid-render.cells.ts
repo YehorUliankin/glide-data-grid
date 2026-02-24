@@ -19,6 +19,7 @@ import {
     type MappedGridColumn,
     cellIsSelected,
     cellIsInRange,
+    getColumnGroupName,
     getFreezeTrailingHeight,
     drawLastUpdateUnderlay,
 } from "./data-grid-lib.js";
@@ -156,7 +157,7 @@ export function drawCells(
 
             const colSelected = selection.columns.hasIndex(c.sourceIndex);
 
-            const groupTheme = getGroupDetails(c.group ?? "").overrideTheme;
+            const groupTheme = getGroupDetails(getColumnGroupName(c.group, 0) ?? "").overrideTheme;
             const colTheme =
                 c.themeOverride === undefined && groupTheme === undefined
                     ? outerTheme

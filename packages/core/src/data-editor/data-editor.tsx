@@ -46,6 +46,8 @@ import {
 import type { DataGridRef } from "../internal/data-grid/data-grid.js";
 import { getScrollBarWidth, useEventListener, whenDefined } from "../common/utils.js";
 import {
+    getColumnGroupName,
+    getGroupDepth,
     isGroupEqual,
     itemsAreEqual,
     itemIsInRect,
@@ -1128,11 +1130,10 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     );
     if (rowMarkers !== "none") nonGrowWidth += rowMarkerWidth;
 
-    const enableGroups = React.useMemo(() => {
-        return columns.some(c => c.group !== undefined);
-    }, [columns]);
-
-    const totalHeaderHeight = enableGroups ? headerHeight + groupHeaderHeight : headerHeight;
+    const groupHeaderDepth = React.useMemo(() => getGroupDepth(columns), [columns]);
+    const enableGroups = groupHeaderDepth > 0;
+    const totalGroupHeaderHeight = enableGroups ? groupHeaderHeight * groupHeaderDepth : 0;
+    const totalHeaderHeight = headerHeight + totalGroupHeaderHeight;
 
     const numSelectedRows = gridSelection.rows.length;
     const rowMarkerChecked =
@@ -1429,8 +1430,9 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         (val: Omit<NonNullable<typeof overlay>, "theme">) => {
             const [col, row] = val.cell;
             const column = mangledCols[col];
+            const leafGroup = getColumnGroupName(column?.group, 0);
             const groupTheme =
-                column?.group !== undefined ? mangledGetGroupDetails(column.group)?.overrideTheme : undefined;
+                leafGroup !== undefined ? mangledGetGroupDetails(leafGroup)?.overrideTheme : undefined;
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 
@@ -2144,20 +2146,23 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
             }
             const isMultiKey = browserIsOSX.value ? args.metaKey : args.ctrlKey;
             const [col] = args.location;
+            const groupLevelFromBottom = -2 - args.location[1];
             const selectedColumns = gridSelection.columns;
 
             if (col < rowMarkerOffset) return;
+            if (groupLevelFromBottom < 0 || groupLevelFromBottom >= getGroupDepth(mangledCols)) return;
 
             const needle = mangledCols[col];
+            const groupName = getColumnGroupName(needle.group, groupLevelFromBottom);
             let start = col;
             let end = col;
             for (let i = col - 1; i >= rowMarkerOffset; i--) {
-                if (!isGroupEqual(needle.group, mangledCols[i].group)) break;
+                if (!isGroupEqual(groupName, getColumnGroupName(mangledCols[i].group, groupLevelFromBottom))) break;
                 start--;
             }
 
             for (let i = col + 1; i < mangledCols.length; i++) {
-                if (!isGroupEqual(needle.group, mangledCols[i].group)) break;
+                if (!isGroupEqual(groupName, getColumnGroupName(mangledCols[i].group, groupLevelFromBottom))) break;
                 end++;
             }
 
