@@ -83,12 +83,21 @@ export function getGroupDepth(columns: readonly { group?: GridColumnGroup }[]): 
     return maxDepth;
 }
 
-export function getColumnGroupName(group: GridColumnGroup | undefined, levelFromBottom: number = 0): string | undefined {
+export function getColumnGroupPath(
+    group: GridColumnGroup | undefined,
+    levelFromBottom: number = 0
+): readonly string[] | undefined {
     if (group === undefined) return undefined;
-    if (typeof group === "string") return levelFromBottom === 0 ? group : undefined;
+    if (typeof group === "string") return levelFromBottom === 0 ? [group] : undefined;
     const index = group.length - 1 - levelFromBottom;
     if (index < 0 || index >= group.length) return undefined;
-    return group[index];
+    return group.slice(0, index + 1);
+}
+
+export function getColumnGroupName(group: GridColumnGroup | undefined, levelFromBottom: number = 0): string | undefined {
+    const path = getColumnGroupPath(group, levelFromBottom);
+    if (path === undefined || path.length === 0) return undefined;
+    return path[path.length - 1];
 }
 
 export function cellIsSelected(location: Item, cell: InnerGridCell, selection: GridSelection): boolean {

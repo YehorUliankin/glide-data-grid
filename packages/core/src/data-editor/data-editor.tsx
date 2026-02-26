@@ -46,6 +46,7 @@ import {
 import type { DataGridRef } from "../internal/data-grid/data-grid.js";
 import { getScrollBarWidth, useEventListener, whenDefined } from "../common/utils.js";
 import {
+    getColumnGroupPath,
     getColumnGroupName,
     getGroupDepth,
     isGroupEqual,
@@ -1400,8 +1401,8 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
     );
 
     const mangledGetGroupDetails = React.useCallback<NonNullable<DataEditorProps["getGroupDetails"]>>(
-        group => {
-            let result = getGroupDetails?.(group) ?? { name: group };
+        (group, context) => {
+            let result = getGroupDetails?.(group, context) ?? { name: group };
             if (onGroupHeaderRenamed !== undefined && group !== "") {
                 result = {
                     icon: result.icon,
@@ -1430,9 +1431,16 @@ const DataEditorImpl: React.ForwardRefRenderFunction<DataEditorRef, DataEditorPr
         (val: Omit<NonNullable<typeof overlay>, "theme">) => {
             const [col, row] = val.cell;
             const column = mangledCols[col];
-            const leafGroup = getColumnGroupName(column?.group, 0);
+            const leafGroupPath = getColumnGroupPath(column?.group, 0) ?? [];
+            const leafGroup =
+                leafGroupPath.length === 0 ? undefined : leafGroupPath[leafGroupPath.length - 1];
             const groupTheme =
-                leafGroup !== undefined ? mangledGetGroupDetails(leafGroup)?.overrideTheme : undefined;
+                leafGroup !== undefined
+                    ? mangledGetGroupDetails(leafGroup, {
+                          path: leafGroupPath,
+                          levelFromBottom: 0,
+                      })?.overrideTheme
+                    : undefined;
             const colTheme = column?.themeOverride;
             const rowTheme = getRowThemeOverride?.(row);
 

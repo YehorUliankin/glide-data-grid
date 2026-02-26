@@ -1,5 +1,5 @@
 import { type Item, type Rectangle } from "../data-grid-types.js";
-import { type MappedGridColumn, getColumnGroupName, isGroupEqual } from "./data-grid-lib.js";
+import { type MappedGridColumn, getColumnGroupName, getColumnGroupPath, isGroupEqual } from "./data-grid-lib.js";
 
 export function getSkipPoint(drawRegions: readonly Rectangle[]): number | undefined {
     if (drawRegions.length === 0) return undefined;
@@ -94,7 +94,8 @@ export type WalkGroupsCallback = (
     width: number,
     height: number,
     row: number,
-    levelFromBottom: number
+    levelFromBottom: number,
+    groupPath: readonly string[]
 ) => void;
 
 export function walkGroups(
@@ -120,6 +121,7 @@ export function walkGroups(
             if (startCol.sticky) {
                 clipX += boxWidth;
             }
+            const startGroupPath = getColumnGroupPath(startCol.group, levelFromBottom) ?? [];
             const startGroup = getColumnGroupName(startCol.group, levelFromBottom);
             while (
                 end < effectiveCols.length &&
@@ -147,7 +149,8 @@ export function walkGroups(
                 w,
                 groupHeaderHeight,
                 row,
-                levelFromBottom
+                levelFromBottom,
+                startGroupPath
             );
 
             x += boxWidth;

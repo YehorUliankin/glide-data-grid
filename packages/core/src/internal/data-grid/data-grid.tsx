@@ -1,6 +1,7 @@
 import * as React from "react";
 import type { FullTheme } from "../../common/styles.js";
 import {
+    getColumnGroupPath,
     computeBounds,
     getColumnGroupName,
     getColumnIndexForX,
@@ -116,6 +117,8 @@ export interface DataGridProps {
     readonly getCellContent: (cell: Item, forceStrict?: boolean) => InnerGridCell;
     /**
      * Provides additional details about groups to extend group functionality.
+     * Callback receives the group name and optional context containing
+     * the nested path and the level from the bottom.
      * @group Data
      */
     readonly getGroupDetails: GroupDetailsCallback | undefined;
@@ -1015,9 +1018,15 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
     }
 
     const groupHeaderActionForEvent = React.useCallback(
-        (group: string, bounds: Rectangle, localEventX: number, localEventY: number) => {
+        (group: string, location: readonly [number, number], bounds: Rectangle, localEventX: number, localEventY: number) => {
             if (getGroupDetails === undefined) return undefined;
-            const groupDesc = getGroupDetails(group);
+            const [col, row] = location;
+            const levelFromBottom = row <= -2 ? -2 - row : 0;
+            const groupPath = getColumnGroupPath(mappedColumns[col]?.group, levelFromBottom) ?? [];
+            const groupDesc = getGroupDetails(group, {
+                path: groupPath,
+                levelFromBottom,
+            });
             if (groupDesc.actions !== undefined) {
                 const boxes = getActionBoundsForGroup(bounds, groupDesc.actions);
                 for (const [i, box] of boxes.entries()) {
@@ -1028,7 +1037,7 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             }
             return undefined;
         },
-        [getGroupDetails]
+        [getGroupDetails, mappedColumns]
     );
 
     const isOverHeaderElement = React.useCallback(
@@ -1117,7 +1126,13 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
             ) {
                 return;
             } else if (args.kind === groupHeaderKind) {
-                const action = groupHeaderActionForEvent(args.group, args.bounds, args.localEventX, args.localEventY);
+                const action = groupHeaderActionForEvent(
+                    args.group,
+                    args.location,
+                    args.bounds,
+                    args.localEventX,
+                    args.localEventY
+                );
                 if (action !== undefined) {
                     return;
                 }
@@ -1195,7 +1210,13 @@ const DataGrid: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> = (p,
                 }
                 return;
             } else if (args.kind === groupHeaderKind) {
-                const action = groupHeaderActionForEvent(args.group, args.bounds, args.localEventX, args.localEventY);
+                const action = groupHeaderActionForEvent(
+                    args.group,
+                    args.location,
+                    args.bounds,
+                    args.localEventX,
+                    args.localEventY
+                );
                 if (action !== undefined) {
                     if (args.button === 0) {
                         action.onClick(args);
