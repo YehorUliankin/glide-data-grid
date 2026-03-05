@@ -1,22 +1,23 @@
 # Glide Data Grid: Nested Group Headers
 
-Техническая документация по добавленной поддержке многоуровневых групп заголовков в этой ветке.
+Technical documentation for the added support of multi-level (nested) group headers in this branch.
 
-## 1. Что именно реализовано
+## 1. What exactly is implemented
 
-Раньше у колонки можно было указать только один `group` (одна строка групповых заголовков).
+Previously, a column could only specify a single `group` (one row of group headers).
 
-Теперь:
+Now:
 
-- `group` поддерживает:
-  - `string` (как раньше),
-  - `string[]` (вложенные группы: от внешней к внутренней).
-- Глубина групп вычисляется автоматически по максимальной длине `group` среди всех колонок.
-- Рендер, hit-test, события и выделение работают для нескольких строк групповых заголовков (`-2`, `-3`, `-4`, ...).
+* `group` supports:
 
-## 2. Модель данных
+  * `string` (as before),
+  * `string[]` (nested groups: from outermost to innermost).
+* Group depth is computed automatically as the maximum `group` length among all columns.
+* Rendering, hit-testing, events, and selection work for multiple group-header rows (`-2`, `-3`, `-4`, ...).
 
-Ключевое изменение типа колонки:
+## 2. Data model
+
+Key change to the column type:
 
 ```ts
 type GridColumnGroup = string | readonly string[];
@@ -26,99 +27,100 @@ interface BaseGridColumn {
 }
 ```
 
-Семантика:
+Semantics:
 
-- `group: "Users"` -> глубина 1.
-- `group: ["Telemetry", "Runtime", "Metrics"]` -> глубина 3.
-- Для коротких путей на верхних/нижних уровнях имя группы может быть `undefined`.
+* `group: "Users"` -> depth 1.
+* `group: ["Telemetry", "Runtime", "Metrics"]` -> depth 3.
+* For shorter paths, a group name at upper/lower levels may be `undefined`.
 
-Вспомогательные функции:
+Helper functions:
 
-- `getGroupDepth(columns)` -> максимальная глубина.
-- `getColumnGroupName(group, levelFromBottom)`:
-  - `levelFromBottom = 0` -> самый внутренний (нижний) уровень,
-  - `1` -> на один уровень выше и т.д.
+* `getGroupDepth(columns)` -> maximum depth.
+* `getColumnGroupName(group, levelFromBottom)`:
 
-## 3. Координаты и геометрия
+  * `levelFromBottom = 0` -> the innermost (bottom) level,
+  * `1` -> one level above, etc.
 
-### 3.1 Индексы строк (`Item = [col, row]`)
+## 3. Coordinates and geometry
 
-- `row = -1` -> обычный заголовок колонки.
-- `row <= -2` -> групповые заголовки (вложенные уровни).
-- `row >= 0` -> данные.
+### 3.1 Row indices (`Item = [col, row]`)
 
-При глубине `D`:
+* `row = -1` -> normal column header.
+* `row <= -2` -> group headers (nested levels).
+* `row >= 0` -> data.
 
-- верхний уровень группы: `row = -(D + 1)`,
-- нижний уровень группы (ближе к header): `row = -2`.
+With depth `D`:
 
-Пример для `D = 4`:
+* top group level: `row = -(D + 1)`,
+* bottom group level (closest to the header): `row = -2`.
 
-- `-5` -> уровень 1 (самый верхний),
-- `-4` -> уровень 2,
-- `-3` -> уровень 3,
-- `-2` -> уровень 4 (самый нижний),
-- `-1` -> header колонок.
+Example for `D = 4`:
 
-### 3.2 Высота заголовков
+* `-5` -> level 1 (topmost),
+* `-4` -> level 2,
+* `-3` -> level 3,
+* `-2` -> level 4 (bottommost),
+* `-1` -> column headers.
 
-- `totalGroupHeaderHeight = groupHeaderHeight * groupHeaderDepth`
-- `totalHeaderHeight = headerHeight + totalGroupHeaderHeight`
+### 3.2 Header heights
 
-Именно эта высота теперь используется сквозь весь пайплайн (скролл, hit-test, рендер линий, ring'и).
+* `totalGroupHeaderHeight = groupHeaderHeight * groupHeaderDepth`
+* `totalHeaderHeight = headerHeight + totalGroupHeaderHeight`
 
-## 4. Как это рисуется
+This height is now used throughout the entire pipeline (scrolling, hit-test, line rendering, rings).
 
-Основная логика:
+## 4. How it is drawn
 
-1. Вычисляется `groupHeaderDepth`.
-2. `walkGroups(...)` проходит по всем уровням сверху вниз.
-3. На каждом уровне колонки объединяются в span'ы по совпадающему имени группы на этом уровне.
-4. Для каждого span вызывается отрисовка прямоугольника группы, текста, иконок и actions.
-5. Потом рисуются разделители между уровнями.
+Core logic:
 
-Важно:
+1. Compute `groupHeaderDepth`.
+2. `walkGroups(...)` iterates through all levels from top to bottom.
+3. At each level, columns are merged into spans by matching group name at that level.
+4. For each span, draw the group rectangle, text, icons, and actions.
+5. Then draw separators between levels.
 
-- sticky-колонки учитываются отдельно (span не пересекает sticky boundary).
-- clipping учитывает текущий viewport.
-- damage rendering тоже знает про все header-строки, а не только про `-2/-1`.
+Important:
 
-## 5. Hit-test и события
+* Sticky columns are handled separately (a span does not cross the sticky boundary).
+* Clipping respects the current viewport.
+* Damage rendering is aware of all header rows, not only `-2/-1`.
 
-### 5.1 Определение строки по `y`
+## 5. Hit-test and events
 
-`getRowIndexForY(...)` теперь учитывает глубину групп. Клик в зоне group headers возвращает конкретный `row` нужного уровня (`-2`, `-3`, ...), а не всегда `-2`.
+### 5.1 Determining row by `y`
 
-### 5.2 Границы элемента
+`getRowIndexForY(...)` now accounts for group depth. A click in the group-header area returns the exact `row` for the corresponding level (`-2`, `-3`, ...), not always `-2`.
 
-`computeBounds(...)` принимает `groupHeaderDepth` и умеет считать bounds для любого group-header уровня:
+### 5.2 Element bounds
 
-- определяет `levelFromBottom = -2 - row`,
-- ищет span влево/вправо по этому уровню,
-- возвращает общий прямоугольник group span.
+`computeBounds(...)` takes `groupHeaderDepth` and can compute bounds for any group-header level:
 
-### 5.3 Тип события group header
+* determines `levelFromBottom = -2 - row`,
+* finds the span to the left/right for that level,
+* returns the full rectangle for the group span.
 
-`GridMouseGroupHeaderEventArgs.location` теперь `[number, number]` (а не `[number, -2]`), чтобы передавать любой header level.
+### 5.3 Event type for group headers
 
-`args.group` теперь уровень-зависимый: имя группы берется из реально кликнутого уровня.
+`GridMouseGroupHeaderEventArgs.location` is now `[number, number]` (instead of `[number, -2]`) to support any header level.
 
-## 6. Что изменилось относительно оригинала
+`args.group` is now level-dependent: the group name is taken from the actually clicked level.
 
-| Область | Оригинал | Сейчас |
-|---|---|---|
-| Тип `column.group` | Только `string` | `string` или `string[]` |
-| Кол-во строк групп | Фиксировано 1 | По глубине, фактически не ограничено (практически используйте 3-4+) |
-| Индекс group row | Всегда `-2` | `-2`, `-3`, `-4`, ... |
-| Hit-test по header | Один group level | Любой уровень |
-| Bounds group header | Только один уровень | Уровень-зависимый span |
-| Selection group click | По одному уровню | По уровню клика |
-| Scrolling total height | `header + 1*groupHeaderHeight` | `header + depth*groupHeaderHeight` |
-| Highlight/focus regions | 1 group row | Все group rows |
+## 6. What changed compared to the original
 
-## 7. Как использовать
+| Area                     | Original                       | Now                                                          |
+| ------------------------ | ------------------------------ | ------------------------------------------------------------ |
+| `column.group` type      | Only `string`                  | `string` or `string[]`                                       |
+| Number of group rows     | Fixed to 1                     | Based on depth, effectively unlimited (practically use 3–4+) |
+| Group row index          | Always `-2`                    | `-2`, `-3`, `-4`, ...                                        |
+| Header hit-test          | One group level                | Any level                                                    |
+| Group header bounds      | One level only                 | Level-dependent span                                         |
+| Selection on group click | Single level                   | Click level                                                  |
+| Scrolling total height   | `header + 1*groupHeaderHeight` | `header + depth*groupHeaderHeight`                           |
+| Highlight/focus regions  | 1 group row                    | All group rows                                               |
 
-### 7.1 Минимальный пример колонок
+## 7. How to use
+
+### 7.1 Minimal columns example
 
 ```ts
 const columns: GridColumn[] = [
@@ -129,58 +131,58 @@ const columns: GridColumn[] = [
 ];
 ```
 
-### 7.2 Совместимость
+### 7.2 Compatibility
 
-Старый формат остается валидным:
+The old format remains valid:
 
 ```ts
 { id: "id", title: "ID", group: "Common" }
 ```
 
-Можно смешивать `string` и `string[]` в одном наборе колонок.
+You can mix `string` and `string[]` within the same column set.
 
-### 7.3 Работа с кликами по group header
+### 7.3 Handling clicks on group headers
 
-В `onGroupHeaderClicked`:
+In `onGroupHeaderClicked`:
 
-- `args.location[1]` -> уровень (`-2`, `-3`, ...),
-- `args.group` -> имя группы именно этого уровня.
+* `args.location[1]` -> level (`-2`, `-3`, ...),
+* `args.group` -> group name for that exact level.
 
-Для поведения "выделить всю группу уровня" используйте уровень из `location[1]` (в текущей реализации `DataEditor` это уже делает).
+For behavior like “select the entire group at this level”, use the level from `location[1]` (the current `DataEditor` implementation already does this).
 
-### 7.4 Тема групп
+### 7.4 Group theming
 
-`getGroupDetails(name)` продолжает принимать строковый ключ группы.
-Для header ячейки и overlay темы в `DataEditor` берется leaf group (`levelFromBottom = 0`).
+`getGroupDetails(name)` continues to accept a string group key.
+For the header cell and overlay themes in `DataEditor`, the leaf group is used (`levelFromBottom = 0`).
 
-## 8. Ограничения и нюансы
+## 8. Limitations and nuances
 
-- Глубина технически не ограничена кодом, но UX обычно разумнее держать в пределах 3-4 уровней.
-- Сравнение групп на уровне сейчас по имени строки (`isGroupEqual`), без полного path-контекста.
-- Если у двух веток одинаковые имена на одном уровне, они считаются одной группой на этом уровне (если колонки соседние).
+* Depth is not technically limited by code, but UX usually makes more sense within 3–4 levels.
+* Group comparison at a level is currently by string name (`isGroupEqual`), without full path context.
+* If two branches share the same name at a given level, they are treated as one group at that level (if the columns are adjacent).
 
-## 9. Где смотреть в коде
+## 9. Where to look in the code
 
-Основные точки:
+Main touchpoints:
 
-- `packages/core/src/internal/data-grid/data-grid-types.ts`
-- `packages/core/src/internal/data-grid/render/data-grid-lib.ts`
-- `packages/core/src/internal/data-grid/render/data-grid-render.walk.ts`
-- `packages/core/src/internal/data-grid/render/data-grid-render.header.ts`
-- `packages/core/src/internal/data-grid/data-grid.tsx`
-- `packages/core/src/data-editor/data-editor.tsx`
-- `packages/core/src/internal/scrolling-data-grid/scrolling-data-grid.tsx`
-- `preview_grid/src/App.tsx`
+* `packages/core/src/internal/data-grid/data-grid-types.ts`
+* `packages/core/src/internal/data-grid/render/data-grid-lib.ts`
+* `packages/core/src/internal/data-grid/render/data-grid-render.walk.ts`
+* `packages/core/src/internal/data-grid/render/data-grid-render.header.ts`
+* `packages/core/src/internal/data-grid/data-grid.tsx`
+* `packages/core/src/data-editor/data-editor.tsx`
+* `packages/core/src/internal/scrolling-data-grid/scrolling-data-grid.tsx`
+* `preview_grid/src/App.tsx`
 
-## 10. Локальный запуск примера
+## 10. Running the local example
 
-Из корня репозитория:
+From the repository root:
 
 ```bash
 npm run dev --prefix preview_grid
 ```
 
-Открыть:
+Open:
 
 `http://localhost:5174`
 
