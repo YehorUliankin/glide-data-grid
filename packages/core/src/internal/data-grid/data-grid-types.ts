@@ -119,6 +119,8 @@ export enum GridColumnIcon {
     HeaderSplitString = "headerSplitString",
     HeaderGeoDistance = "headerGeoDistance",
     HeaderArray = "headerArray",
+    ArrowLeft = "arrowLeft",
+    ArrowRight = "arrowRight",
     RowOwnerOverlay = "rowOwnerOverlay",
     ProtectedColumnOverlay = "protectedColumnOverlay",
 }

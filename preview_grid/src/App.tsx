@@ -1,6 +1,7 @@
 import { useCallback, useMemo } from "react";
 import DataEditor, {
     GridCellKind,
+    GridColumnIcon,
     type CellClickedEventArgs,
     type DataEditorProps,
     type GridCell,
@@ -128,6 +129,30 @@ export default function App() {
 
         return {
             name: group,
+            actions: [
+                {
+                    icon: GridColumnIcon.ArrowLeft,
+                    title: "Arrow left",
+                    onClick: e => {
+                        console.log("[group-action] arrowLeft", {
+                            group,
+                            context,
+                            location: e.location,
+                        });
+                    },
+                },
+                {
+                    icon: GridColumnIcon.ArrowRight,
+                    title: "Arrow right",
+                    onClick: e => {
+                        console.log("[group-action] arrowRight", {
+                            group,
+                            context,
+                            location: e.location,
+                        });
+                    },
+                },
+            ],
             overrideTheme: {
                 bgGroupHeader: bg,
                 bgGroupHeaderHovered: bg,
